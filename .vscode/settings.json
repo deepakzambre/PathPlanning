@@ -1,5 +1,10 @@
 {
   "editor.fontSize": 20,
   "editor.tabSize": 2,
-  "editor.cursorStyle": "block"
+  "editor.cursorStyle": "block",
+  "files.associations": {
+    "xutility": "cpp",
+    "random": "cpp",
+    "vector": "cpp"
+  }
 }

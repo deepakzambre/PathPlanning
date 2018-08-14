@@ -9,174 +9,16 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
 #include "spline.h"
+#include "helper.hpp"
+#include "car.hpp"
+#include "common.hpp"
 
 using namespace std;
 
 // for convenience
 using json = nlohmann::json;
 
-int INFO = 10;
-int DBG = 5;
-int CRITICAL = 1;
-int LOG_LEVEL = 6;
-
-#define LOG(w, x)                                                       \
-  {                                                                     \
-    if (w <= LOG_LEVEL)                                                 \
-    {                                                                   \
-      cout << __FUNCTION__ << "::" << __LINE__ << "->" << x << endl;    \
-    }                                                                   \
-  }
-
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
-
-// Checks if the SocketIO event has JSON data.
-// If there is data the JSON object in string format will be returned,
-// else the empty string "" will be returned.
-string hasData(string s)
-{
-  auto found_null = s.find("null");
-  auto b1 = s.find_first_of("[");
-  auto b2 = s.find_first_of("}");
-  if (found_null != string::npos)
-  {
-    return "";
-  }
-  else if (b1 != string::npos && b2 != string::npos)
-  {
-    return s.substr(b1, b2 - b1 + 2);
-  }
-  return "";
-}
-
-double distance(double x1, double y1, double x2, double y2)
-{
-  return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
-}
-
-int ClosestWaypoint(double x, double y, const vector<double> &maps_x, const vector<double> &maps_y)
-{
-
-  double closestLen = 100000; //large number
-  int closestWaypoint = 0;
-
-  for (int i = 0; i < maps_x.size(); i++)
-  {
-    double map_x = maps_x[i];
-    double map_y = maps_y[i];
-    double dist = distance(x, y, map_x, map_y);
-    if (dist < closestLen)
-    {
-      closestLen = dist;
-      closestWaypoint = i;
-    }
-  }
-
-  return closestWaypoint;
-}
-
-int NextWaypoint(double x, double y, double theta, const vector<double> &maps_x, const vector<double> &maps_y)
-{
-
-  int closestWaypoint = ClosestWaypoint(x, y, maps_x, maps_y);
-
-  double map_x = maps_x[closestWaypoint];
-  double map_y = maps_y[closestWaypoint];
-
-  double heading = atan2((map_y - y), (map_x - x));
-
-  double angle = fabs(theta - heading);
-  angle = min(2 * pi() - angle, angle);
-
-  if (angle > pi() / 4)
-  {
-    closestWaypoint++;
-    if (closestWaypoint == maps_x.size())
-    {
-      closestWaypoint = 0;
-    }
-  }
-
-  return closestWaypoint;
-}
-
-// Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta, const vector<double> &maps_x, const vector<double> &maps_y)
-{
-  int next_wp = NextWaypoint(x, y, theta, maps_x, maps_y);
-
-  int prev_wp;
-  prev_wp = next_wp - 1;
-  if (next_wp == 0)
-  {
-    prev_wp = maps_x.size() - 1;
-  }
-
-  double n_x = maps_x[next_wp] - maps_x[prev_wp];
-  double n_y = maps_y[next_wp] - maps_y[prev_wp];
-  double x_x = x - maps_x[prev_wp];
-  double x_y = y - maps_y[prev_wp];
-
-  // find the projection of x onto n
-  double proj_norm = (x_x * n_x + x_y * n_y) / (n_x * n_x + n_y * n_y);
-  double proj_x = proj_norm * n_x;
-  double proj_y = proj_norm * n_y;
-
-  double frenet_d = distance(x_x, x_y, proj_x, proj_y);
-
-  //see if d value is positive or negative by comparing it to a center point
-
-  double center_x = 1000 - maps_x[prev_wp];
-  double center_y = 2000 - maps_y[prev_wp];
-  double centerToPos = distance(center_x, center_y, x_x, x_y);
-  double centerToRef = distance(center_x, center_y, proj_x, proj_y);
-
-  if (centerToPos <= centerToRef)
-  {
-    frenet_d *= -1;
-  }
-
-  // calculate s value
-  double frenet_s = 0;
-  for (int i = 0; i < prev_wp; i++)
-  {
-    frenet_s += distance(maps_x[i], maps_y[i], maps_x[i + 1], maps_y[i + 1]);
-  }
-
-  frenet_s += distance(0, 0, proj_x, proj_y);
-
-  return {frenet_s, frenet_d};
-}
-
-// Transform from Frenet s,d coordinates to Cartesian x,y
-vector<double> getXY(double s, double d, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y)
-{
-  int prev_wp = -1;
-
-  while (s > maps_s[prev_wp + 1] && (prev_wp < (int)(maps_s.size() - 1)))
-  {
-    prev_wp++;
-  }
-
-  int wp2 = (prev_wp + 1) % maps_x.size();
-
-  double heading = atan2((maps_y[wp2] - maps_y[prev_wp]), (maps_x[wp2] - maps_x[prev_wp]));
-  // the x,y,s along the segment
-  double seg_s = (s - maps_s[prev_wp]);
-
-  double seg_x = maps_x[prev_wp] + seg_s * cos(heading);
-  double seg_y = maps_y[prev_wp] + seg_s * sin(heading);
-
-  double perp_heading = heading - pi() / 2;
-
-  double x = seg_x + d * cos(perp_heading);
-  double y = seg_y + d * sin(perp_heading);
-
-  return {x, y};
-}
+const int LOG_LEVEL = 11;
 
 int main()
 {
@@ -217,9 +59,8 @@ int main()
     map_waypoints_dy.push_back(d_y);
   }
 
-  int lane = 1;
-  double ref_v = 1;
-  h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy, &lane, &ref_v](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  Car ego;
+  h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy, &ego](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -238,59 +79,48 @@ int main()
 
         if (event == "telemetry")
         {
-          LOG(DBG, "===========================================================================");
-
           // j[1] is the data JSON object
 
           // Main car's localization Data
-          double car_x = j[1]["x"];
-          double car_y = j[1]["y"];
-          double car_s = j[1]["s"];
-          double car_d = j[1]["d"];
-          double car_yaw = j[1]["yaw"];
-          double car_speed = j[1]["speed"];
-
-          // Previous path data given to the Planner
+          ego.Set(j[1]["x"]
+          ,j[1]["y"]
+          ,j[1]["s"]
+          ,j[1]["d"]
+          ,j[1]["yaw"]
+          ,j[1]["speed"]);
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
-          // Previous path's end s and d values
-          double end_path_s = j[1]["end_path_s"];
-          double end_path_d = j[1]["end_path_d"];
+          auto end_path_s = j[1]["end_path_s"];
+          auto end_path_d = j[1]["end_path_d"];
 
           // Sensor Fusion Data, a list of all other cars on the same side of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
-          LOG(DBG, "car x = " + to_string(car_x) + ", car y = " + to_string(car_y));
-          LOG(DBG, "car s = " + to_string(car_s) + ", car d = " + to_string(car_d));
+          ego.Log();
 
 
           /***************************************************************************/
           int prev_size = previous_path_x.size();
+/*
           if (prev_size > 0)
           {
             car_s = end_path_s;
           }
 
-          bool too_close = false;
+           bool too_close = false;
 
           for (int i = 0; i < sensor_fusion.size(); i++)
           {
-            double id = sensor_fusion[i][0];
-            double x = sensor_fusion[i][1];
-            double y = sensor_fusion[i][2];
-            double vx = sensor_fusion[i][3];
-            double vy = sensor_fusion[i][4];
-            double check_car_s = sensor_fusion[i][5];
             float d = sensor_fusion[i][6];
-            LOG(DBG, "Other car(" + to_string(id) + "), x = " + to_string(x) + ", y = " + to_string(y) + ", vx = " + to_string(vx) + ", vy = " + to_string(vy) + ", s = " + to_string(check_car_s) + ", d = " + to_string(d) + ", lane = " + to_string((d - 2) / 4));
-
-            double check_speed = sqrt(vx * vx + vy * vy);
-
-            if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2))
+            if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane + 2))
             {
+              double vx = sensor_fusion[i][3];
+              double vy = sensor_fusion[i][4];
+              double check_speed = sqrt(vx * vx + vy * vy);
+              double check_car_s = sensor_fusion[i][5];
+
               check_car_s += ((double)prev_size * 0.02 * check_speed);
               if ((check_car_s > car_s) && (check_car_s - car_s) < 30)
               {
-                LOG(DBG, "Too Close");
                 too_close = true;
               }
             }
@@ -304,11 +134,12 @@ int main()
           {
             ref_v = min(49.5, ref_v + .124);
           }
-
+ */
+/*
           vector<double> ptsx;
           vector<double> ptsy;
 
-          double ref_x = car_x;
+           double ref_x = car_x;
           double ref_y = car_y;
           double ref_yaw = deg2rad(car_yaw);
 
@@ -337,15 +168,15 @@ int main()
             ptsy.push_back(ref_y);
           }
 
-          vector<double> wp0 = getXY(car_s + 30, 2 + 4 * lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> wp0 = getXY(car_s + 20, 2 + 4 * lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
           ptsx.push_back(wp0[0]);
           ptsy.push_back(wp0[1]);
 
-          vector<double> wp1 = getXY(car_s + 60, 2 + 4 * lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> wp1 = getXY(car_s + 40, 2 + 4 * lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
           ptsx.push_back(wp1[0]);
           ptsy.push_back(wp1[1]);
 
-          vector<double> wp2 = getXY(car_s + 90, 2 + 4 * lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> wp2 = getXY(car_s + 60, 2 + 4 * lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
           ptsx.push_back(wp2[0]);
           ptsy.push_back(wp2[1]);
 
@@ -394,24 +225,69 @@ int main()
             next_x_vals.push_back(next_x);
             next_y_vals.push_back(next_y);
           }
-
-          if (LOG_LEVEL > INFO)
-          {
-//            getchar();
-          }
-
+ */
           /***************************************************************************/
 
-          json msgJson;
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
 
-/*
           next_x_vals.clear();
           next_y_vals.clear();
 
-          double dist_inc = 0.3;
+          if (previous_path_x.size() > 2)
+          {
+            int closest_waypoint = 0;
+            double dist = numeric_limits<double>::max();
+            for (int i = 0; i < previous_path_x.size(); i++)
+            {
+              double d = distance(ego.x, ego.y, previous_path_x[i], previous_path_y[i]);
+              if (d < dist)
+              {
+                d = dist;
+                closest_waypoint = i;
+              }
+              else if (d > dist)
+              {
+                break;
+              }
+            }
+
+            if (dist == 0.0)
+            {
+              closest_waypoint++;
+            }
+
+            closest_waypoint += NUM_SKIP_PTS;
+
+            for (int i = closest_waypoint;
+                 i < min(closest_waypoint + NUM_REUSE_PTS, (long)previous_path_x.size());
+                 i++)
+            {
+              next_x_vals.push_back(previous_path_x[i]);
+              next_y_vals.push_back(previous_path_y[i]);
+            }
+          }
+
+          // 0.0001 <= dist_inc <= 0.008
+          double dist_inc = 0.008;
+
+          double base_s = ego.s;
+          if (next_x_vals.size() > 0)
+          {
+            double theta = ego.yaw;
+            if (next_x_vals.size() > 1)
+            {
+              theta = atan2((next_y_vals.back() - next_y_vals[next_y_vals.size() - 2]),
+                            (next_x_vals.back() - next_x_vals[next_x_vals.size() - 2]));
+            }
+
+            vector<double> f = getFrenet(next_x_vals.back(), next_y_vals.back(), theta, map_waypoints_x, map_waypoints_y);
+            base_s = f[0];
+          }
+
           for (int i = 0; i < 50; i++)
           {
-            double next_s = car_s + (i + 1) * dist_inc;
+            double next_s = base_s + (i + 1) * dist_inc;
             double next_d = 6;
 
             vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -419,7 +295,23 @@ int main()
             next_x_vals.push_back(xy[0]);
             next_y_vals.push_back(xy[1]);
           }
-*/
+
+
+          vector<double> p_xy{ego.x, ego.y};
+          for (int i = 0; i < 3; i++)
+          {
+            double dist = distance(next_x_vals[i], next_y_vals[i], p_xy[0], p_xy[1]);
+            LOG(DBG, "i = " + to_string(i) + "(x, y) = (" + to_string(next_x_vals[i]) + ", " + to_string(next_y_vals[i]) + "), dist = " + to_string(dist));
+            p_xy[0] = next_x_vals[i];
+            p_xy[1] = next_y_vals[i];
+          }
+
+          if (LOG_LEVEL > INFO)
+          {
+//            getchar();
+          }
+
+          json msgJson;
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
