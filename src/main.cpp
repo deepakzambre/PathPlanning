@@ -17,7 +17,7 @@ using namespace std;
 // for convenience
 using json = nlohmann::json;
 
-const int LOG_LEVEL = 5;
+const int LOG_LEVEL = 11;
 
 int main()
 {
@@ -92,8 +92,7 @@ int main()
 
           ego.Log();
 
-          CarState state = ego.EvaluateState(j[1]["sensor_fusion"]);
-          ego.UpdateState(state);
+          ego.EvaluateAndUpdateState(j[1]["sensor_fusion"]);
           ego.CalculateTrajectory(map_waypoints_x, map_waypoints_y, map_waypoints_s);
 
           /***************************************************************************/

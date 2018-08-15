@@ -6,6 +6,9 @@
     "xutility": "cpp",
     "random": "cpp",
     "vector": "cpp",
-    "dense": "cpp"
+    "dense": "cpp",
+    "string": "cpp",
+    "iosfwd": "cpp",
+    "xlocbuf": "cpp"
   }
 }

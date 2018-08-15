@@ -19,8 +19,43 @@ using json = nlohmann::json;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-CarState Car::EvaluateState(json &sensor_fusion)
+void Car::EvaluateAndUpdateState(json &sensor_fusion)
 {
+  if (this->d < 0)
+  {
+    this->state = CarState::LaneChange;
+    this->target_lane = 0;
+    this->last_speed = this->iteration_speed;
+    this->last_lane = this->lane;
+    return;
+  }
+
+  if (this->d > (NUM_LANES * LANE_SIZE))
+  {
+    this->state = CarState::LaneChange;
+    this->target_lane = NUM_LANES - 1;
+    this->last_speed = this->iteration_speed;
+    this->last_lane = this->lane;
+    return;
+  }
+
+  if (this->state == CarState::LaneChange)
+  {
+    double target_lane_center = (this->target_lane * LANE_SIZE) + (LANE_SIZE / 2.0);
+    if (target_lane_center - LANE_EPSILON <= this->d && this->d <= target_lane_center + LANE_EPSILON)
+    {
+      this->state = CarState::Cruise;
+      this->last_speed = this->iteration_speed;
+      this->last_lane = this->lane;
+      return;
+    }
+
+    this->state = CarState::LaneChange;
+    this->last_speed = this->iteration_speed;
+    this->last_lane = this->lane;
+    return;
+  }
+
   int prev_size = this->old_path_x.size();
   double end_s = prev_size > 0 ? this->old_path_end_s : this->s;
 
@@ -28,7 +63,7 @@ CarState Car::EvaluateState(json &sensor_fusion)
   for (int i = 0; i < sensor_fusion.size(); i++)
   {
     float check_d = sensor_fusion[i][6];
-    if (check_d < (2 + 4 * this->target_lane + 2) && check_d > (2 + 4 * this->target_lane - 2))
+    if (check_d < (2 + 4 * this->lane + 2) && check_d > (2 + 4 * this->lane - 2))
     {
       double check_vx = sensor_fusion[i][3];
       double check_vy = sensor_fusion[i][4];
@@ -45,32 +80,26 @@ CarState Car::EvaluateState(json &sensor_fusion)
 
   if (too_close)
   {
-    return CarState::LaneChange;
+    LOG(DBG, "LANE CHANGE");
+    this->state = CarState::LaneChange;
+    this->target_lane = min(max(0, this->lane - 1), 2);
+    this->iteration_speed = this->lane == 0 ? this->last_speed - .224 : this->iteration_speed;
   }
   else
   {
-    return CarState::Cruise;
+    LOG(DBG, "CRUISE");
+    this->state = CarState::Cruise;
+    this->iteration_speed = min(49.5, this->last_speed + .224);
   }
-}
 
-void Car::UpdateState(CarState in_state)
-{
-  this->state = in_state;
-
-  if (in_state == CarState::LaneChange)
-  {
-    this->target_speed = this->target_speed - .224;
-  }
-  else
-  {
-    this->target_speed = min(49.5, this->target_speed + .224);
-  }
+  this->last_speed = this->iteration_speed;
+  this->last_lane = this->lane;
 }
 
 void Car::CalculateTrajectory(
-  vector<double> map_waypoints_x,
-  vector<double> map_waypoints_y,
-  vector<double> map_waypoints_s)
+    vector<double> map_waypoints_x,
+    vector<double> map_waypoints_y,
+    vector<double> map_waypoints_s)
 {
   vector<double> ptsx;
   vector<double> ptsy;
@@ -126,10 +155,10 @@ void Car::CalculateTrajectory(
     ptsx[i] = shift_x * cos(-1 * ref_yaw) - shift_y * sin(-1 * ref_yaw);
     ptsy[i] = shift_x * sin(-1 * ref_yaw) + shift_y * cos(-1 * ref_yaw);
 
-    // if (i != 0 && ptsx[i] <= ptsx[i - 1])
-    // {
-    //   ptsx[i] = ptsx[i] + 1;
-    // }
+    if (i != 0 && ptsx[i] <= ptsx[i - 1])
+    {
+      ptsx[i] = ptsx[i] + 1;
+    }
     // LOG(INFO, "ptsx = " + to_string(ptsx[i]) + ", ptsy = " + to_string(ptsy[i]));
   }
 
@@ -149,7 +178,7 @@ void Car::CalculateTrajectory(
   double target_y = s(target_x);
   double target_dist = sqrt(target_x * target_x + target_y * target_y);
 
-  double N = target_dist * 2.24 / (0.02 * this->target_speed);
+  double N = target_dist * 2.24 / (0.02 * this->iteration_speed);
   double x_addon = 0;
   double x_inc = target_x / N;
   for (int i = 1; i <= 50 - prev_size; i++)
@@ -174,13 +203,15 @@ void Car::Set(double in_x, double in_y, double in_s, double in_d, double in_yaw,
   d = in_d;
   yaw = in_yaw;
   speed = in_speed;
+  lane = (int)d / 4;
 }
 
 void Car::Log()
 {
-  LOG(INFO, "car x = " + to_string(x) + ", car y = " + to_string(y));
+  LOG(INFO, "car x = " + to_string(x) + ", car y = " + to_string(y) + ", car yaw = " + to_string(yaw));
   LOG(INFO, "car s = " + to_string(s) + ", car d = " + to_string(d));
-  LOG(INFO, "car speed = " + to_string(speed) + ", car yaw = " + to_string(yaw));
+  LOG(INFO, "car speed = " + to_string(speed) + ", car target speed = " + to_string(iteration_speed));
+  LOG(INFO, "car lane = " + to_string(lane) + ", car target lane = " + to_string(target_lane));
 }
 
 vector<double> JMT(vector<double> start, vector<double> end, double T)
