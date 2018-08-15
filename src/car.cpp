@@ -21,7 +21,7 @@ using Eigen::VectorXd;
 
 void Car::UpdateIterationSpeed()
 {
-    if (this->last_speed > this->cruise_speed && this->iteration_speed > 1.0)
+  if (this->last_speed > this->cruise_speed && this->iteration_speed > 1.0)
   {
     this->iteration_speed = this->last_speed - .224;
   }
@@ -80,34 +80,34 @@ void Car::EvaluateAndUpdateState(json &sensor_fusion)
   for (int i = 0; i < sensor_fusion.size(); i++)
   {
     float check_d = sensor_fusion[i][6];
-      double check_vx = sensor_fusion[i][3];
-      double check_vy = sensor_fusion[i][4];
-      double check_speed = sqrt(check_vx * check_vx + check_vy * check_vy);
-      double check_s = sensor_fusion[i][5];
-      int check_lane = (int)check_d / 4;
+    double check_vx = sensor_fusion[i][3];
+    double check_vy = sensor_fusion[i][4];
+    double check_speed = sqrt(check_vx * check_vx + check_vy * check_vy);
+    double check_s = sensor_fusion[i][5];
+    int check_lane = (int)check_d / 4;
 
-      if (abs(check_s - this->s) < 20)
-      {
-        is_obstruction[check_lane] = true;
-      }
+    if (abs(check_s - this->s) < 20)
+    {
+      is_obstruction[check_lane] = true;
+    }
 
-      if (check_lane == this->lane)
+    if (check_lane == this->lane)
+    {
+      if (this->s < check_s && check_s < (this->s + 50) && check_s < ahead_dist[check_lane])
       {
-        if (this->s < check_s && check_s < (this->s + 50) && check_s < ahead_dist[check_lane])
-        {
-          ahead_speed[check_lane] = 2.2369 * check_speed;
-        }
+        ahead_speed[check_lane] = 2.2369 * check_speed;
       }
-      else if (check_s >= (this->s + 20) && check_s < ahead_dist[check_lane])
-        {
-          ahead_speed[check_lane] = 2.2369 * check_speed;
-        }
+    }
+    else if (check_s >= (this->s + 20) && check_s < ahead_dist[check_lane])
+    {
+      ahead_speed[check_lane] = 2.2369 * check_speed;
+    }
 
     if (check_d < (2 + 4 * this->lane + 2) && check_d > (2 + 4 * this->lane - 2))
     {
       //double future_check_s = check_s + ((double)prev_size * 0.02 * check_speed);
       //if (check_s > this->s && (future_check_s > end_s) && (future_check_s - end_s) < 30)
-      if (check_s > this-> s && (check_s - this->s) < 30)
+      if (check_s > this->s && (check_s - this->s) < 30)
       {
         too_close = true;
       }
@@ -153,29 +153,25 @@ void Car::EvaluateAndUpdateState(json &sensor_fusion)
     else
     {
       int next_lane = this->lane;
-      if (!is_obstruction[this->lane - 1]
-          && ahead_speed[this->lane - 1] > ahead_speed[this->lane]
-          && ahead_speed[this->lane - 1] > ahead_speed[this->lane + 1])
+      if (!is_obstruction[this->lane - 1] && ahead_speed[this->lane - 1] > ahead_speed[this->lane] && ahead_speed[this->lane - 1] > ahead_speed[this->lane + 1])
       {
         LOG(INFO, "Lane change to 0");
-              this->state = CarState::LaneChange;
-          this->target_lane = this->lane - 1;
-              this->cruise_speed = ahead_speed[this->lane - 1];
+        this->state = CarState::LaneChange;
+        this->target_lane = this->lane - 1;
+        this->cruise_speed = ahead_speed[this->lane - 1];
       }
-      else if (!is_obstruction[this->lane + 1]
-               && ahead_speed[this->lane + 1] > ahead_speed[this->lane]
-               && ahead_speed[this->lane + 1] > ahead_speed[this->lane - 1])
+      else if (!is_obstruction[this->lane + 1] && ahead_speed[this->lane + 1] > ahead_speed[this->lane] && ahead_speed[this->lane + 1] > ahead_speed[this->lane - 1])
       {
         LOG(INFO, "Lane change to 1");
-              this->state = CarState::LaneChange;
-          this->target_lane = this->lane + 1;
-              this->cruise_speed = ahead_speed[this->lane + 1];
+        this->state = CarState::LaneChange;
+        this->target_lane = this->lane + 1;
+        this->cruise_speed = ahead_speed[this->lane + 1];
       }
       else
       {
         LOG(INFO, "No lane change");
-          this->state = CarState::Cruise;
-          this->cruise_speed = ahead_speed[this->lane];
+        this->state = CarState::Cruise;
+        this->cruise_speed = ahead_speed[this->lane];
       }
     }
   }

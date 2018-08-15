@@ -6,12 +6,12 @@ const int DBG = 5;
 const int CRITICAL = 1;
 extern const int LOG_LEVEL;
 
-#define LOG(w, x)                                                       \
-  {                                                                     \
-    if (w <= LOG_LEVEL)                                                 \
-    {                                                                   \
-      cout << __FUNCTION__ << "::" << __LINE__ << "->" << x << endl;    \
-    }                                                                   \
+#define LOG(w, x)                                                    \
+  {                                                                  \
+    if (w <= LOG_LEVEL)                                              \
+    {                                                                \
+      cout << __FUNCTION__ << "::" << __LINE__ << "->" << x << endl; \
+    }                                                                \
   }
 
 const long NUM_PTS = 50;

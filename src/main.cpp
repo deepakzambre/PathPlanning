@@ -79,12 +79,7 @@ int main()
         if (event == "telemetry")
         {
           // j[1] is the data JSON object
-          ego.Set(j[1]["x"]
-          ,j[1]["y"]
-          ,j[1]["s"] 
-          ,j[1]["d"] 
-          ,j[1]["yaw"] 
-          ,j[1]["speed"]);
+          ego.Set(j[1]["x"], j[1]["y"], j[1]["s"], j[1]["d"], j[1]["yaw"], j[1]["speed"]);
           ego.old_path_x = j[1]["previous_path_x"];
           ego.old_path_y = j[1]["previous_path_y"];
           ego.old_path_end_s = j[1]["end_path_s"];
@@ -96,7 +91,6 @@ int main()
           ego.CalculateTrajectory(map_waypoints_x, map_waypoints_y, map_waypoints_s);
 
           /***************************************************************************/
-
 
           /***************************************************************************/
 
