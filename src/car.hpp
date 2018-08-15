@@ -45,6 +45,7 @@ public:
   vector<double> next_x;
   vector<double> next_y;
 
+  void UpdateIterationSpeed();
   void EvaluateAndUpdateState(json &sensor_fusion);
   void CalculateTrajectory(
       vector<double> map_waypoints_x,

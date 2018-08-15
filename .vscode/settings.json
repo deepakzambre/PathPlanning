@@ -9,6 +9,7 @@
     "dense": "cpp",
     "string": "cpp",
     "iosfwd": "cpp",
-    "xlocbuf": "cpp"
+    "xlocbuf": "cpp",
+    "limits": "cpp"
   }
 }

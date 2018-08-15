@@ -19,6 +19,18 @@ using json = nlohmann::json;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
+void Car::UpdateIterationSpeed()
+{
+    if (this->last_speed > this->cruise_speed && this->iteration_speed > 1.0)
+  {
+    this->iteration_speed = this->last_speed - .224;
+  }
+  else if (this->last_speed < this->cruise_speed && this->iteration_speed <= (MAX_SPEED - 1.0))
+  {
+    this->iteration_speed = min(49.5, this->last_speed + .224);
+  }
+}
+
 void Car::EvaluateAndUpdateState(json &sensor_fusion)
 {
   if (this->d < 0)
@@ -45,12 +57,14 @@ void Car::EvaluateAndUpdateState(json &sensor_fusion)
     if (target_lane_center - LANE_EPSILON <= this->d && this->d <= target_lane_center + LANE_EPSILON)
     {
       this->state = CarState::Cruise;
+      this->UpdateIterationSpeed();
       this->last_speed = this->iteration_speed;
       this->last_lane = this->lane;
       return;
     }
 
     this->state = CarState::LaneChange;
+    this->UpdateIterationSpeed();
     this->last_speed = this->iteration_speed;
     this->last_lane = this->lane;
     return;
@@ -60,18 +74,40 @@ void Car::EvaluateAndUpdateState(json &sensor_fusion)
   double end_s = prev_size > 0 ? this->old_path_end_s : this->s;
 
   bool too_close = false;
+  vector<bool> is_obstruction{false, false, false};
+  vector<double> ahead_speed{MAX_SPEED, MAX_SPEED, MAX_SPEED};
+  vector<double> ahead_dist{numeric_limits<double>::max(), numeric_limits<double>::max(), numeric_limits<double>::max()};
   for (int i = 0; i < sensor_fusion.size(); i++)
   {
     float check_d = sensor_fusion[i][6];
-    if (check_d < (2 + 4 * this->lane + 2) && check_d > (2 + 4 * this->lane - 2))
-    {
       double check_vx = sensor_fusion[i][3];
       double check_vy = sensor_fusion[i][4];
       double check_speed = sqrt(check_vx * check_vx + check_vy * check_vy);
       double check_s = sensor_fusion[i][5];
+      int check_lane = (int)check_d / 4;
 
-      check_s += ((double)prev_size * 0.02 * check_speed);
-      if ((check_s > end_s) && (check_s - end_s) < 30)
+      if (abs(check_s - this->s) < 20)
+      {
+        is_obstruction[check_lane] = true;
+      }
+
+      if (check_lane == this->lane)
+      {
+        if (this->s < check_s && check_s < (this->s + 50) && check_s < ahead_dist[check_lane])
+        {
+          ahead_speed[check_lane] = 2.2369 * check_speed;
+        }
+      }
+      else if (check_s >= (this->s + 20) && check_s < ahead_dist[check_lane])
+        {
+          ahead_speed[check_lane] = 2.2369 * check_speed;
+        }
+
+    if (check_d < (2 + 4 * this->lane + 2) && check_d > (2 + 4 * this->lane - 2))
+    {
+      //double future_check_s = check_s + ((double)prev_size * 0.02 * check_speed);
+      //if (check_s > this->s && (future_check_s > end_s) && (future_check_s - end_s) < 30)
+      if (check_s > this-> s && (check_s - this->s) < 30)
       {
         too_close = true;
       }
@@ -80,20 +116,82 @@ void Car::EvaluateAndUpdateState(json &sensor_fusion)
 
   if (too_close)
   {
-    LOG(DBG, "LANE CHANGE");
-    this->state = CarState::LaneChange;
-    this->target_lane = min(max(0, this->lane - 1), 2);
-    this->iteration_speed = this->lane == 0 ? this->last_speed - .224 : this->iteration_speed;
+    if (this->lane == 0)
+    {
+      if (!is_obstruction[1])
+      {
+        if (ahead_speed[0] < ahead_speed[1])
+        {
+          this->state = CarState::LaneChange;
+          this->target_lane = 1;
+          this->cruise_speed = ahead_speed[1];
+        }
+        else
+        {
+          this->state = CarState::Cruise;
+          this->cruise_speed = ahead_speed[0];
+        }
+      }
+    }
+    else if (this->lane == 2)
+    {
+      if (!is_obstruction[1])
+      {
+        if (ahead_speed[2] < ahead_speed[1])
+        {
+          this->state = CarState::LaneChange;
+          this->target_lane = 1;
+          this->cruise_speed = ahead_speed[1];
+        }
+        else
+        {
+          this->state = CarState::Cruise;
+          this->cruise_speed = ahead_speed[2];
+        }
+      }
+    }
+    else
+    {
+      int next_lane = this->lane;
+      if (!is_obstruction[this->lane - 1]
+          && ahead_speed[this->lane - 1] > ahead_speed[this->lane]
+          && ahead_speed[this->lane - 1] > ahead_speed[this->lane + 1])
+      {
+        LOG(INFO, "Lane change to 0");
+              this->state = CarState::LaneChange;
+          this->target_lane = this->lane - 1;
+              this->cruise_speed = ahead_speed[this->lane - 1];
+      }
+      else if (!is_obstruction[this->lane + 1]
+               && ahead_speed[this->lane + 1] > ahead_speed[this->lane]
+               && ahead_speed[this->lane + 1] > ahead_speed[this->lane - 1])
+      {
+        LOG(INFO, "Lane change to 1");
+              this->state = CarState::LaneChange;
+          this->target_lane = this->lane + 1;
+              this->cruise_speed = ahead_speed[this->lane + 1];
+      }
+      else
+      {
+        LOG(INFO, "No lane change");
+          this->state = CarState::Cruise;
+          this->cruise_speed = ahead_speed[this->lane];
+      }
+    }
   }
   else
   {
-    LOG(DBG, "CRUISE");
+    LOG(INFO, "Cruise");
     this->state = CarState::Cruise;
-    this->iteration_speed = min(49.5, this->last_speed + .224);
+    this->cruise_speed = ahead_speed[this->lane];
   }
 
+  this->UpdateIterationSpeed();
   this->last_speed = this->iteration_speed;
   this->last_lane = this->lane;
+  LOG(INFO, "max lane speeds = " + to_string(ahead_speed[0]) + "," + to_string(ahead_speed[1]) + "," + to_string(ahead_speed[2]))
+  LOG(INFO, "Cruise speed = " + to_string(this->cruise_speed));
+  LOG(INFO, "state = " + to_string(this->state));
 }
 
 void Car::CalculateTrajectory(
@@ -165,13 +263,17 @@ void Car::CalculateTrajectory(
   tk::spline s;
   s.set_points(ptsx, ptsy);
 
-  vector<double> next_x_vals;
-  vector<double> next_y_vals;
+  // vector<double> next_x_vals;
+  // vector<double> next_y_vals;
+  this->next_x.clear();
+  this->next_y.clear();
 
   for (int i = 0; i < prev_size; i++)
   {
-    next_x_vals.push_back(this->old_path_x[i]);
-    next_y_vals.push_back(this->old_path_y[i]);
+    // next_x_vals.push_back(this->old_path_x[i]);
+    // next_y_vals.push_back(this->old_path_y[i]);
+    this->next_x.push_back(this->old_path_x[i]);
+    this->next_y.push_back(this->old_path_y[i]);
   }
 
   double target_x = 30;
@@ -187,12 +289,14 @@ void Car::CalculateTrajectory(
     double next_x = x_addon * cos(ref_yaw) - s(x_addon) * sin(ref_yaw) + ref_x;
     double next_y = x_addon * sin(ref_yaw) + s(x_addon) * cos(ref_yaw) + ref_y;
 
-    next_x_vals.push_back(next_x);
-    next_y_vals.push_back(next_y);
+    // next_x_vals.push_back(next_x);
+    // next_y_vals.push_back(next_y);
+    this->next_x.push_back(next_x);
+    this->next_y.push_back(next_y);
   }
 
-  this->next_x = next_x_vals;
-  this->next_y = next_y_vals;
+  // this->next_x = next_x_vals;
+  // this->next_y = next_y_vals;
 }
 
 void Car::Set(double in_x, double in_y, double in_s, double in_d, double in_yaw, double in_speed)
@@ -208,6 +312,8 @@ void Car::Set(double in_x, double in_y, double in_s, double in_d, double in_yaw,
 
 void Car::Log()
 {
+  LOG(INFO, "************************************");
+  LOG(INFO, "car x = " + to_string(x) + ", car y = " + to_string(y) + ", car yaw = " + to_string(yaw));
   LOG(INFO, "car x = " + to_string(x) + ", car y = " + to_string(y) + ", car yaw = " + to_string(yaw));
   LOG(INFO, "car s = " + to_string(s) + ", car d = " + to_string(d));
   LOG(INFO, "car speed = " + to_string(speed) + ", car target speed = " + to_string(iteration_speed));

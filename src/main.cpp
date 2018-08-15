@@ -17,7 +17,7 @@ using namespace std;
 // for convenience
 using json = nlohmann::json;
 
-const int LOG_LEVEL = 11;
+const int LOG_LEVEL = 0;
 
 int main()
 {
