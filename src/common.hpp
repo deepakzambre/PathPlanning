@@ -14,17 +14,14 @@ extern const int LOG_LEVEL;
     }                                                                   \
   }
 
-const double MAX_S = 6945.55;
 const long NUM_PTS = 50;
-const long NUM_REUSE_PTS = 1;
-const long NUM_SKIP_PTS = 0;
 
 const double LANE_SIZE = 4.0;
 const double DT = 0.02;
 
-const double MAX_SPEED = 22.0;
-const double MAX_ACCEL = 10.0;
-const double MAX_JERK = 10.0;
+const double MAX_SPEED = 49.5 * 1609.34 / (3600 * 50); // meter per tick; tick = 0.02 sec
+const double MAX_ACCEL = 10 * 1609.34 / (50 * 50); // meter per tick^2
+const double MAX_JERK = 50 * 1609.34 / (50 * 50 * 50); // meter per tick^3
 
 
 

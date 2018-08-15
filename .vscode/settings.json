@@ -5,6 +5,7 @@
   "files.associations": {
     "xutility": "cpp",
     "random": "cpp",
-    "vector": "cpp"
+    "vector": "cpp",
+    "dense": "cpp"
   }
 }

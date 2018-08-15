@@ -5,14 +5,166 @@
 #include <fstream>
 #include <cmath>
 #include <vector>
+#include "json.hpp"
 
+#include "spline.h"
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "Eigen-3.3/Eigen/Dense"
+#include "helper.hpp"
+#include "common.hpp"
 
 using namespace std;
+using json = nlohmann::json;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+
+CarState Car::EvaluateState(json &sensor_fusion)
+{
+  int prev_size = this->old_path_x.size();
+  double end_s = prev_size > 0 ? this->old_path_end_s : this->s;
+
+  bool too_close = false;
+  for (int i = 0; i < sensor_fusion.size(); i++)
+  {
+    float check_d = sensor_fusion[i][6];
+    if (check_d < (2 + 4 * this->target_lane + 2) && check_d > (2 + 4 * this->target_lane - 2))
+    {
+      double check_vx = sensor_fusion[i][3];
+      double check_vy = sensor_fusion[i][4];
+      double check_speed = sqrt(check_vx * check_vx + check_vy * check_vy);
+      double check_s = sensor_fusion[i][5];
+
+      check_s += ((double)prev_size * 0.02 * check_speed);
+      if ((check_s > end_s) && (check_s - end_s) < 30)
+      {
+        too_close = true;
+      }
+    }
+  }
+
+  if (too_close)
+  {
+    return CarState::LaneChange;
+  }
+  else
+  {
+    return CarState::Cruise;
+  }
+}
+
+void Car::UpdateState(CarState in_state)
+{
+  this->state = in_state;
+
+  if (in_state == CarState::LaneChange)
+  {
+    this->target_speed = this->target_speed - .224;
+  }
+  else
+  {
+    this->target_speed = min(49.5, this->target_speed + .224);
+  }
+}
+
+void Car::CalculateTrajectory(
+  vector<double> map_waypoints_x,
+  vector<double> map_waypoints_y,
+  vector<double> map_waypoints_s)
+{
+  vector<double> ptsx;
+  vector<double> ptsy;
+
+  double ref_x = this->x;
+  double ref_y = this->y;
+  double ref_yaw = deg2rad(this->yaw);
+
+  int prev_size = this->old_path_x.size();
+  if (prev_size < 2)
+  {
+    LOG(INFO, "No Previous points");
+
+    ptsx.push_back(this->x - cos(this->yaw));
+    ptsy.push_back(this->y - sin(this->yaw));
+
+    ptsx.push_back(this->x);
+    ptsy.push_back(this->y);
+  }
+  else
+  {
+    ref_x = this->old_path_x[prev_size - 1];
+    ref_y = this->old_path_y[prev_size - 1];
+    ref_yaw = atan2(
+        ref_y - double(this->old_path_y[prev_size - 2]),
+        ref_x - double(this->old_path_x[prev_size - 2]));
+
+    ptsx.push_back(this->old_path_x[prev_size - 2]);
+    ptsy.push_back(this->old_path_y[prev_size - 2]);
+
+    ptsx.push_back(ref_x);
+    ptsy.push_back(ref_y);
+  }
+
+  double end_s = prev_size > 0 ? this->old_path_end_s : this->s;
+  vector<double> wp0 = getXY(end_s + 30, 2 + 4 * this->target_lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+  ptsx.push_back(wp0[0]);
+  ptsy.push_back(wp0[1]);
+
+  vector<double> wp1 = getXY(end_s + 60, 2 + 4 * this->target_lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+  ptsx.push_back(wp1[0]);
+  ptsy.push_back(wp1[1]);
+
+  vector<double> wp2 = getXY(end_s + 90, 2 + 4 * this->target_lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+  ptsx.push_back(wp2[0]);
+  ptsy.push_back(wp2[1]);
+
+  for (int i = 0; i < ptsx.size(); i++)
+  {
+    double shift_x = ptsx[i] - ref_x;
+    double shift_y = ptsy[i] - ref_y;
+
+    ptsx[i] = shift_x * cos(-1 * ref_yaw) - shift_y * sin(-1 * ref_yaw);
+    ptsy[i] = shift_x * sin(-1 * ref_yaw) + shift_y * cos(-1 * ref_yaw);
+
+    // if (i != 0 && ptsx[i] <= ptsx[i - 1])
+    // {
+    //   ptsx[i] = ptsx[i] + 1;
+    // }
+    // LOG(INFO, "ptsx = " + to_string(ptsx[i]) + ", ptsy = " + to_string(ptsy[i]));
+  }
+
+  tk::spline s;
+  s.set_points(ptsx, ptsy);
+
+  vector<double> next_x_vals;
+  vector<double> next_y_vals;
+
+  for (int i = 0; i < prev_size; i++)
+  {
+    next_x_vals.push_back(this->old_path_x[i]);
+    next_y_vals.push_back(this->old_path_y[i]);
+  }
+
+  double target_x = 30;
+  double target_y = s(target_x);
+  double target_dist = sqrt(target_x * target_x + target_y * target_y);
+
+  double N = target_dist * 2.24 / (0.02 * this->target_speed);
+  double x_addon = 0;
+  double x_inc = target_x / N;
+  for (int i = 1; i <= 50 - prev_size; i++)
+  {
+    x_addon += x_inc;
+    double next_x = x_addon * cos(ref_yaw) - s(x_addon) * sin(ref_yaw) + ref_x;
+    double next_y = x_addon * sin(ref_yaw) + s(x_addon) * cos(ref_yaw) + ref_y;
+
+    next_x_vals.push_back(next_x);
+    next_y_vals.push_back(next_y);
+  }
+
+  this->next_x = next_x_vals;
+  this->next_y = next_y_vals;
+}
 
 void Car::Set(double in_x, double in_y, double in_s, double in_d, double in_yaw, double in_speed)
 {
