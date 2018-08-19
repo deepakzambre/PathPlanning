@@ -35,8 +35,8 @@ public:
   double cruise_speed = 49;
 
   // Previous path data given to the Planner
-  json old_path_x;
-  json old_path_y;
+  vector<double> old_path_x;
+  vector<double> old_path_y;
 
   // Previous path's end s and d values
   double old_path_end_s = 0;

@@ -14,8 +14,6 @@ extern const int LOG_LEVEL;
     }                                                                \
   }
 
-const long NUM_PTS = 50;
-
 const double LANE_SIZE = 4.0;
 const long NUM_LANES = 3;
 const double LANE_EPSILON = 0.1;

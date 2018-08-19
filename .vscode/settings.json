@@ -10,6 +10,21 @@
     "string": "cpp",
     "iosfwd": "cpp",
     "xlocbuf": "cpp",
-    "limits": "cpp"
+    "limits": "cpp",
+    "array": "cpp",
+    "deque": "cpp",
+    "initializer_list": "cpp",
+    "list": "cpp",
+    "queue": "cpp",
+    "type_traits": "cpp",
+    "xhash": "cpp",
+    "xstring": "cpp",
+    "xtree": "cpp",
+    "algorithm": "cpp",
+    "atomic": "cpp",
+    "forward_list": "cpp",
+    "ios": "cpp",
+    "system_error": "cpp",
+    "xiosbase": "cpp"
   }
 }
