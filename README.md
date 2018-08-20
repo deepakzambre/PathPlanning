@@ -138,3 +138,34 @@ still be compilable with cmake and make./
 ## How to write a README
 A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
 
+## Model Documentation
+
+Ego car uses spline to generate smooth trajectory for cruising in current lane or for chaning the lane while the behavior of ego car is managed using a state based model. Ego car operates in following states:
+
+* Cruise State
+
+   This state is characterized by following behavior:
+   1. If there is no car in front of ego car then it cruises current lane with max speed (49.5 mph)
+   2. Else if distance between ego car and the one in-front of it is less than 30m, then ego car cruises with speed = (front car speed - 20)MPH
+   3. Else if distance between ego car and the one in-front of it is less than 40m, then ego car cruises with speed = (front car speed - 10)MPH
+   4. Else if distance between ego car and the one in-front of it is less than 50m, then ego car cruises with speed = (front car speed)MPH
+   5. Additionally, if the distance between ego car and the car in front of it is less than 50m then ego car tries to see if it can cruise with higher speed in adjacent lanes. If such a lane exists and if it does not have any obtruction then ego car transitions to "Lane Change" state with the adjacent lane as target.
+
+* Lane Change State
+
+   Ego car enters this state when the new lane offers higher speed cruise promise than the current one. Ego car transitions from "Lane Change" state to "Cruise" state when it's d_value is within epsilon = 0.1m distance from the center of new lane.
+   Before initiating "Lane Change" ego car ensures that there is no car in front of it in new lane within 20m distance and there is no car behind it in new lane within 5m distance.
+
+### Possible improvements to model
+
+1. Aggressive lane change lookout may cause lane oscillation
+
+   Ego car is on constant lookout of lane change if it is going at sub-optimal speed. This aggresive lookout sometimes causes ego car to osciallate lane changes; in situation when the next lane goes at a speed slighty higher than current lane speed and then after lane change we discover that the pervious lane is now going at higher speed than current lane. This behavior can be cured by penalizing lane changes that occur within short duration of each other OR by recognizing that ego car is oscillating betwen lanes and then stopping it.
+
+2. Check for accelaration of adjacent cars
+
+   Ego car decides to change lane based on empty area around it in the adjacent lane. It should also consider the accelaration (and speed) of the car behind it in target lane before making this decision.
+
+3. Prevent lane changes near destination
+
+   Ego car is on constant lookout for lanes that offer higher speed cruise ignoring the distance to destination. If destination exists then ego car should favor lanes closer to the destination side as it approaches destination.
